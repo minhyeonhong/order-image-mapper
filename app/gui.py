@@ -34,7 +34,11 @@ class MainWindow(QWidget):
         self.excel_label = QLabel('Excel 미선택')
         self.zip_label = QLabel('ZIP 미선택')
 
-        self.image_col_input = QLineEdit('E')
+        # 입력받을 데이터 위한 입력창
+        self.start_row_input = QLineEdit('9')
+        self.jan_col_input = QLineEdit('F')
+        self.name_col_input = QLineEdit('H')
+        self.image_col_input = QLineEdit('D')
 
         self.log_box = QTextEdit()
         self.log_box.setReadOnly(True)
@@ -56,7 +60,16 @@ class MainWindow(QWidget):
         layout.addWidget(self.zip_label)
         layout.addWidget(zip_btn)
 
-        layout.addWidget(QLabel('이미지 삽입 열'))
+        layout.addWidget(QLabel('시작 행'))
+        layout.addWidget(self.start_row_input)
+
+        layout.addWidget(QLabel('JAN 열'))
+        layout.addWidget(self.jan_col_input)
+
+        layout.addWidget(QLabel('상품명 열'))
+        layout.addWidget(self.name_col_input)
+
+        layout.addWidget(QLabel('이미지 열'))
         layout.addWidget(self.image_col_input)
 
         layout.addWidget(run_btn)
@@ -123,12 +136,20 @@ class MainWindow(QWidget):
             # Excel 읽기
             excel = ExcelHandler(self.excel_path)
 
-            products = excel.read_products()
+            products = excel.read_products(
+                int(self.start_row_input.text()),
+                self.jan_col_input.text(),
+                self.name_col_input.text(),
+            )
 
             self.log(f'상품 {len(products)}개 분석중')
 
             # 이미지 매칭
             matcher = ImageMatcher(temp_dir)
+            
+            self.log('===== 이미지 파일 목록 =====')
+            for img in matcher.images[:100]:
+                self.log(img)
 
             inserter = ImageInserter(excel.ws)
 
@@ -155,7 +176,7 @@ class MainWindow(QWidget):
                     inserted += 1
 
                 else:
-                    failed.append(product['name'])
+                    failed.append(product)
 
             # 저장
             # 1. 현재 날짜와 시간을 원하는 형식으로 가져오기
@@ -186,8 +207,32 @@ class MainWindow(QWidget):
             if failed:
                 self.log('--- 실패 목록 ---')
 
-                for item in failed:
-                    self.log(item)
+                from openpyxl import Workbook
+                fail_wb = Workbook()
+                fail_ws = fail_wb.active
+                fail_ws.title = '매칭실패'
+                
+                fail_ws['A1'] = '원본 엑셀 파일명'
+                fail_ws['B1'] = '행 번호'
+                fail_ws['C1'] = 'JAN'
+                fail_ws['D1'] = '상품명'
+                
+                excel_basename = os.path.basename(self.excel_path)
+                fail_filename = f"output_fail_{now_str}.xlsx"
+                fail_output_path = os.path.join(
+                    os.path.dirname(self.excel_path),
+                    fail_filename
+                )
+
+                for idx, item in enumerate(failed, start=2):
+                    self.log(item['name'])
+                    fail_ws[f'A{idx}'] = excel_basename
+                    fail_ws[f'B{idx}'] = item['row']
+                    fail_ws[f'C{idx}'] = item['jan']
+                    fail_ws[f'D{idx}'] = item['name']
+                    
+                fail_wb.save(fail_output_path)
+                self.log(f'실패 목록 엑셀 저장 위치: {fail_output_path}')
 
         except Exception as e:
             self.log('에러 발생:')

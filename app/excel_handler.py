@@ -7,17 +7,27 @@ class ExcelHandler:
         self.wb = load_workbook(filepath)
         self.ws = self.wb.active
 
-    def read_products(self):
+    def read_products(
+        self,
+        start_row,
+        jan_col,
+        name_col,
+    ):
+
         products = []
 
-        for row in range(9, self.ws.max_row + 1):
-            jan = self.ws[f'F{row}'].value
-            name = self.ws[f'H{row}'].value
+        for row in range(start_row, self.ws.max_row + 1):
+
+            jan = self.ws[f'{jan_col}{row}'].value
+            name = self.ws[f'{name_col}{row}'].value
+
+            if not jan and not name:
+                continue
 
             products.append({
                 'row': row,
                 'jan': str(jan) if jan else '',
-                'name': str(name) if name else ''
+                'name': str(name) if name else '',
             })
 
         return products

@@ -1,0 +1,17 @@
+# Python 캐시 파일
+__pycache__/
+*.py[cod]
+*$py.class
+
+# PyInstaller 빌드 결과물 및 임시 파일
+build/
+dist/
+*.spec
+
+# Mac OS 시스템 파일
+.DS_Store
+
+# 가상환경 (사용하시는 경우를 대비해 추가)
+venv/
+env/
+.venv/
