@@ -45,6 +45,7 @@ class MainWindow(QWidget):
 
         self.log_box = QTextEdit()
         self.log_box.setReadOnly(True)
+        self.log_box.setMinimumHeight(300)
 
         excel_btn = QPushButton('Excel 선택')
         excel_btn.clicked.connect(self.select_excel)
@@ -108,6 +109,8 @@ class MainWindow(QWidget):
 
     def run_process(self):
         try:
+            self.log_box.clear()
+            
             temp_dir = tempfile.mkdtemp()
 
             # ZIP 압축 해제
@@ -153,7 +156,16 @@ class MainWindow(QWidget):
 
             inserted = 0
 
-            for product in products:
+            total = len(products)
+
+            for index, product in enumerate(products, start=1):
+
+                if index % 10 == 0 or index == total:
+                    self.log(
+                        f'진행률: {index}/{total} | 성공:{inserted} 실패:{len(failed)}'
+                    )
+
+                QApplication.processEvents()
 
                 image = matcher.find_image(
                     product['jan'],
@@ -204,18 +216,17 @@ class MainWindow(QWidget):
             self.log(f'결과 파일: {output_path}')
 
             if failed:
-                self.log(f'실패 목록 파일: {fail_output_path}')
 
                 from openpyxl import Workbook
                 fail_wb = Workbook()
                 fail_ws = fail_wb.active
                 fail_ws.title = '매칭실패'
-                
+
                 fail_ws['A1'] = '원본 엑셀 파일명'
                 fail_ws['B1'] = '행 번호'
                 fail_ws['C1'] = 'JAN'
                 fail_ws['D1'] = '상품명'
-                
+
                 excel_basename = os.path.basename(self.excel_path)
                 fail_filename = f"output_fail_{now_str}.xlsx"
                 fail_output_path = os.path.join(
@@ -228,9 +239,9 @@ class MainWindow(QWidget):
                     fail_ws[f'B{idx}'] = item['row']
                     fail_ws[f'C{idx}'] = item['jan']
                     fail_ws[f'D{idx}'] = item['name']
-                    
+
                 fail_wb.save(fail_output_path)
-                self.log(f'실패 목록 엑셀 저장 위치: {fail_output_path}')
+                self.log(f'실패 목록 파일: {fail_output_path}')
 
         except Exception as e:
             self.log('에러 발생:')

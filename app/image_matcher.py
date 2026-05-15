@@ -1,7 +1,5 @@
 import os
 import re
-from rapidfuzz import fuzz
-
 
 class ImageMatcher:
     def __init__(self, image_folder):
@@ -18,6 +16,15 @@ class ImageMatcher:
                 and os.path.splitext(f)[1].lower() in valid_ext
             )
         ]
+
+        # normalize 캐싱
+        self.normalized_images = {}
+
+        for image in self.images:
+
+            filename = os.path.splitext(image)[0]
+
+            self.normalized_images[image] = self.normalize(filename)
 
     def normalize(self, text):
 
@@ -56,63 +63,35 @@ class ImageMatcher:
 
     def find_image(self, jan, name):
 
-        # 1순위 JAN
-        if jan:
+        jan = str(jan).strip() if jan else ''
 
-            matched = []
+        if not jan:
+            return None
 
-            for image in self.images:
-
-                filename = os.path.splitext(image)[0]
-
-                # 정확히 일치
-                if filename == jan:
-                    return image
-
-                # _1, _2 포함
-                if filename.startswith(jan):
-                    matched.append(image)
-
-            # 정렬
-            if matched:
-
-                matched.sort(key=lambda x: (
-                    0 if os.path.splitext(x)[0] == jan else 1,
-                    x
-                ))
-
-                return matched[0]
-
-        normalized_name = self.normalize(name)
-
-        # 2순위 이름 포함
-        for image in self.images:
-
-            filename = os.path.splitext(image)[0]
-
-            normalized_image = self.normalize(filename)
-
-            if normalized_name in normalized_image:
-                return image
-
-        # 3순위 fuzzy
-        best_score = 0
-        best_image = None
+        matched = []
 
         for image in self.images:
 
             filename = os.path.splitext(image)[0]
 
-            score = fuzz.partial_ratio(
-                normalized_name,
-                self.normalize(filename)
-            )
+            # 파일명 앞 숫자 추출
+            match = re.match(r'^(\d+)', filename)
 
-            if score > best_score:
-                best_score = score
-                best_image = image
+            if not match:
+                continue
 
-        if best_score >= 55:
-            return best_image
+            image_jan = match.group(1)
+
+            if image_jan == jan:
+                matched.append(image)
+
+        if matched:
+
+            matched.sort(key=lambda x: (
+                0 if os.path.splitext(x)[0] == jan else 1,
+                x
+            ))
+
+            return matched[0]
 
         return None
