@@ -40,6 +40,9 @@ class MainWindow(QWidget):
         self.name_col_input = QLineEdit('H')
         self.image_col_input = QLineEdit('D')
 
+        self.image_width_input = QLineEdit('150')
+        self.image_height_input = QLineEdit('150')
+
         self.log_box = QTextEdit()
         self.log_box.setReadOnly(True)
 
@@ -72,6 +75,12 @@ class MainWindow(QWidget):
         layout.addWidget(QLabel('이미지 열'))
         layout.addWidget(self.image_col_input)
 
+        layout.addWidget(QLabel('이미지 너비'))
+        layout.addWidget(self.image_width_input)
+
+        layout.addWidget(QLabel('이미지 높이'))
+        layout.addWidget(self.image_height_input)
+
         layout.addWidget(run_btn)
 
         layout.addWidget(QLabel('로그'))
@@ -86,8 +95,6 @@ class MainWindow(QWidget):
             self.excel_path = path
             self.excel_label.setText(path)
 
-            self.log_box.append(f'Excel 선택: {path}')
-
     def select_zip(self):
         path, _ = QFileDialog.getOpenFileName(self)
 
@@ -95,15 +102,12 @@ class MainWindow(QWidget):
             self.zip_path = path
             self.zip_label.setText(path)
 
-            self.log_box.append(f'ZIP 선택: {path}')
-
     def log(self, message):
-        self.log_box.append(message)
+        self.log_box.append(str(message))
+        self.log_box.ensureCursorVisible()
 
     def run_process(self):
         try:
-            self.log('작업 시작...')
-
             temp_dir = tempfile.mkdtemp()
 
             # ZIP 압축 해제
@@ -131,8 +135,6 @@ class MainWindow(QWidget):
                     with zip_ref.open(zip_info) as source, open(target_path, 'wb') as target:
                         target.write(source.read())
 
-            self.log('ZIP 압축 해제 완료')
-
             # Excel 읽기
             excel = ExcelHandler(self.excel_path)
 
@@ -142,15 +144,9 @@ class MainWindow(QWidget):
                 self.name_col_input.text(),
             )
 
-            self.log(f'상품 {len(products)}개 분석중')
-
             # 이미지 매칭
             matcher = ImageMatcher(temp_dir)
             
-            self.log('===== 이미지 파일 목록 =====')
-            for img in matcher.images[:100]:
-                self.log(img)
-
             inserter = ImageInserter(excel.ws)
 
             failed = []
@@ -170,7 +166,9 @@ class MainWindow(QWidget):
                     inserter.insert_image(
                         temp_dir,
                         image,
-                        f"{image_col}{product['row']}"
+                        f"{image_col}{product['row']}",
+                        int(self.image_width_input.text()),
+                        int(self.image_height_input.text()),
                     )
 
                     inserted += 1
@@ -200,12 +198,13 @@ class MainWindow(QWidget):
             )
 
             self.log('========== 완료 ==========')
+            self.log(f'총 상품 수: {len(products)}')
             self.log(f'삽입 성공: {inserted}')
             self.log(f'매칭 실패: {len(failed)}')
-            self.log(f'저장 위치: {output_path}')
+            self.log(f'결과 파일: {output_path}')
 
             if failed:
-                self.log('--- 실패 목록 ---')
+                self.log(f'실패 목록 파일: {fail_output_path}')
 
                 from openpyxl import Workbook
                 fail_wb = Workbook()
@@ -225,7 +224,6 @@ class MainWindow(QWidget):
                 )
 
                 for idx, item in enumerate(failed, start=2):
-                    self.log(item['name'])
                     fail_ws[f'A{idx}'] = excel_basename
                     fail_ws[f'B{idx}'] = item['row']
                     fail_ws[f'C{idx}'] = item['jan']
@@ -244,7 +242,7 @@ def run_app():
     app = QApplication(sys.argv)
 
     window = MainWindow()
-    window.resize(400, 200)
+    window.resize(700, 500)
     window.show()
 
     sys.exit(app.exec())

@@ -34,6 +34,7 @@ class ExcelHandler:
 
     def save(self, path):
         self.wb.save(path)
+        self.wb.close()
 
     def create_failed_sheet(self, failed_items):
 

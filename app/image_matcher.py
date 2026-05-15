@@ -55,16 +55,41 @@ class ImageMatcher:
         return text
 
     def find_image(self, jan, name):
+
         # 1순위 JAN
-        for image in self.images:
-            if jan and jan in image:
-                return image
+        if jan:
+
+            matched = []
+
+            for image in self.images:
+
+                filename = os.path.splitext(image)[0]
+
+                # 정확히 일치
+                if filename == jan:
+                    return image
+
+                # _1, _2 포함
+                if filename.startswith(jan):
+                    matched.append(image)
+
+            # 정렬
+            if matched:
+
+                matched.sort(key=lambda x: (
+                    0 if os.path.splitext(x)[0] == jan else 1,
+                    x
+                ))
+
+                return matched[0]
 
         normalized_name = self.normalize(name)
 
         # 2순위 이름 포함
         for image in self.images:
+
             filename = os.path.splitext(image)[0]
+
             normalized_image = self.normalize(filename)
 
             if normalized_name in normalized_image:
@@ -75,7 +100,13 @@ class ImageMatcher:
         best_image = None
 
         for image in self.images:
-            score = fuzz.partial_ratio(normalized_name, self.normalize(image))
+
+            filename = os.path.splitext(image)[0]
+
+            score = fuzz.partial_ratio(
+                normalized_name,
+                self.normalize(filename)
+            )
 
             if score > best_score:
                 best_score = score
