@@ -19,6 +19,9 @@ from PySide6.QtWidgets import (
     QComboBox,
     QInputDialog,
     QMessageBox,
+    QTabWidget,
+    QListWidget,
+    QListWidgetItem,
 )
 
 from excel_handler import ExcelHandler
@@ -49,9 +52,12 @@ class MainWindow(QWidget):
             QPushButton:hover { background-color: #e2e6ea; }
             QPushButton#runBtn { background-color: #007bff; color: white; font-weight: bold; font-size: 14px; padding: 10px; margin-top: 10px; }
             QPushButton#runBtn:hover { background-color: #0069d9; }
-            QLineEdit, QComboBox { border: 1px solid #ccc; border-radius: 4px; padding: 5px; background: white; }
-            QLineEdit:focus, QComboBox:focus { border: 1px solid #80bdff; }
+            QLineEdit, QComboBox, QListWidget { border: 1px solid #ccc; border-radius: 4px; padding: 5px; background: white; }
+            QLineEdit:focus, QComboBox:focus, QListWidget:focus { border: 1px solid #80bdff; }
             QTextEdit { border: 1px solid #ccc; border-radius: 4px; background: #fff; }
+            QTabBar::tab { padding: 8px 15px; border: 1px solid #ccc; border-bottom: none; border-top-left-radius: 4px; border-top-right-radius: 4px; background: #f0f0f0; }
+            QTabBar::tab:selected { background: #fff; font-weight: bold; }
+            QTabWidget::pane { border: 1px solid #ccc; border-radius: 4px; }
             QLabel#fileLabel { border: 2px dashed #bbb; border-radius: 4px; padding: 10px; background: #fdfdfd; color: #555; font-weight: bold; }
         """)
 
@@ -91,26 +97,9 @@ class MainWindow(QWidget):
         settings_layout = QVBoxLayout()
         settings_layout.setSpacing(15)
 
-        # 레시피 UI
-        recipe_layout = QHBoxLayout()
-        self.recipe_combo = QComboBox()
-        self.recipe_combo.addItem("기본 설정")
-        self.recipe_combo.addItems(list(self.recipes.keys()))
-        self.recipe_combo.currentTextChanged.connect(self.load_recipe)
-        self.recipe_combo.setMinimumWidth(150)
-
-        save_recipe_btn = QPushButton("저장")
-        save_recipe_btn.clicked.connect(self.save_recipe)
-        delete_recipe_btn = QPushButton("삭제")
-        delete_recipe_btn.clicked.connect(self.delete_recipe)
-
-        recipe_layout.addWidget(QLabel("<b>저장된 레시피:</b>"))
-        recipe_layout.addWidget(self.recipe_combo)
-        recipe_layout.addWidget(save_recipe_btn)
-        recipe_layout.addWidget(delete_recipe_btn)
-        recipe_layout.addStretch()
-        
-        settings_layout.addLayout(recipe_layout)
+        self.current_recipe_name = "기본 설정"
+        self.current_recipe_label = QLabel(f"<b>현재 적용된 레시피:</b> {self.current_recipe_name}")
+        settings_layout.addWidget(self.current_recipe_label)
 
         # 입력 필드 UI (Grid)
         form_layout = QGridLayout()
@@ -145,17 +134,53 @@ class MainWindow(QWidget):
         settings_group.setLayout(settings_layout)
         main_layout.addWidget(settings_group)
 
-        # --- 3. 실행 및 로그 ---
+        # --- 3. 실행 버튼 ---
         run_btn = QPushButton('▶ 이미지 자동 삽입 실행')
         run_btn.setObjectName("runBtn")
         run_btn.clicked.connect(self.run_process)
         main_layout.addWidget(run_btn)
 
+        # --- 4. 탭 위젯 (로그 & 레시피 관리) ---
+        self.tab_widget = QTabWidget()
+        
+        # 탭 1: 진행 로그
+        self.log_tab = QWidget()
+        log_layout = QVBoxLayout()
         self.log_box = QTextEdit()
         self.log_box.setReadOnly(True)
         self.log_box.setMinimumHeight(200)
-        main_layout.addWidget(QLabel("<b>📝 진행 로그</b>"))
-        main_layout.addWidget(self.log_box)
+        log_layout.addWidget(self.log_box)
+        self.log_tab.setLayout(log_layout)
+        
+        # 탭 2: 레시피 관리
+        self.recipe_tab = QWidget()
+        recipe_tab_layout = QVBoxLayout()
+        
+        self.recipe_list = QListWidget()
+        self.recipe_list.addItem("기본 설정")
+        self.recipe_list.addItems(list(self.recipes.keys()))
+        self.recipe_list.setCurrentRow(0)
+        
+        recipe_btn_layout = QHBoxLayout()
+        apply_recipe_btn = QPushButton("적용")
+        apply_recipe_btn.clicked.connect(self.apply_recipe)
+        save_recipe_tab_btn = QPushButton("현재 설정 저장")
+        save_recipe_tab_btn.clicked.connect(self.save_recipe)
+        delete_recipe_tab_btn = QPushButton("삭제")
+        delete_recipe_tab_btn.clicked.connect(self.delete_recipe)
+        
+        recipe_btn_layout.addWidget(apply_recipe_btn)
+        recipe_btn_layout.addWidget(save_recipe_tab_btn)
+        recipe_btn_layout.addWidget(delete_recipe_tab_btn)
+        
+        recipe_tab_layout.addWidget(self.recipe_list)
+        recipe_tab_layout.addLayout(recipe_btn_layout)
+        self.recipe_tab.setLayout(recipe_tab_layout)
+
+        self.tab_widget.addTab(self.log_tab, "📝 진행 로그")
+        self.tab_widget.addTab(self.recipe_tab, "⚙️ 레시피 관리")
+
+        main_layout.addWidget(self.tab_widget)
 
         self.setLayout(main_layout)
 
@@ -182,6 +207,9 @@ class MainWindow(QWidget):
                 QMessageBox.warning(self, "경고", "'기본 설정'이라는 이름은 사용할 수 없습니다.")
                 return
 
+            if name not in self.recipes:
+                self.recipe_list.addItem(name)
+
             self.recipes[name] = {
                 'start_row': self.start_row_input.text(),
                 'jan_col': self.jan_col_input.text(),
@@ -192,13 +220,18 @@ class MainWindow(QWidget):
             }
             self.save_recipes_to_file()
             
-            if self.recipe_combo.findText(name) == -1:
-                self.recipe_combo.addItem(name)
-            self.recipe_combo.setCurrentText(name)
+            self.current_recipe_name = name
+            self.current_recipe_label.setText(f"<b>현재 적용된 레시피:</b> {name}")
             self.log(f'레시피 "{name}"이(가) 저장되었습니다.')
+            self.tab_widget.setCurrentIndex(0)
 
     def delete_recipe(self):
-        name = self.recipe_combo.currentText()
+        current_item = self.recipe_list.currentItem()
+        if not current_item:
+            QMessageBox.warning(self, "경고", "삭제할 레시피를 선택해주세요.")
+            return
+            
+        name = current_item.text()
         if name == "기본 설정":
             QMessageBox.warning(self, "경고", "기본 설정은 삭제할 수 없습니다.")
             return
@@ -208,10 +241,25 @@ class MainWindow(QWidget):
             if name in self.recipes:
                 del self.recipes[name]
                 self.save_recipes_to_file()
-                self.recipe_combo.removeItem(self.recipe_combo.currentIndex())
-                self.log(f'레시피 "{name}"이(가) 삭제되었습니다.')
+                
+                row = self.recipe_list.row(current_item)
+                self.recipe_list.takeItem(row)
+                
+                if self.current_recipe_name == name:
+                    self.current_recipe_name = "기본 설정"
+                    self.current_recipe_label.setText("<b>현재 적용된 레시피:</b> 기본 설정")
 
-    def load_recipe(self, name):
+                self.log(f'레시피 "{name}"이(가) 삭제되었습니다.')
+                self.tab_widget.setCurrentIndex(0)
+
+    def apply_recipe(self):
+        current_item = self.recipe_list.currentItem()
+        if not current_item:
+            QMessageBox.warning(self, "경고", "적용할 레시피를 선택해주세요.")
+            return
+
+        name = current_item.text()
+
         if name == "기본 설정":
             self.start_row_input.setText('9')
             self.jan_col_input.setText('F')
@@ -227,6 +275,11 @@ class MainWindow(QWidget):
             self.image_col_input.setText(recipe.get('image_col', 'D'))
             self.image_width_input.setText(recipe.get('image_width', '150'))
             self.image_height_input.setText(recipe.get('image_height', '150'))
+            
+        self.current_recipe_name = name
+        self.current_recipe_label.setText(f"<b>현재 적용된 레시피:</b> {name}")
+        self.log(f'레시피 "{name}"이(가) 적용되었습니다.')
+        self.tab_widget.setCurrentIndex(0)
 
     def dragEnterEvent(self, event):
         if event.mimeData().hasUrls():
