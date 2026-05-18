@@ -24,6 +24,8 @@ class MainWindow(QWidget):
     def __init__(self):
         super().__init__()
 
+        self.setAcceptDrops(True)
+
         self.excel_path = ''
         self.zip_path = ''
 
@@ -31,8 +33,8 @@ class MainWindow(QWidget):
 
         layout = QVBoxLayout()
 
-        self.excel_label = QLabel('Excel 미선택')
-        self.zip_label = QLabel('ZIP 미선택')
+        self.excel_label = QLabel('Excel 미선택 (드래그 앤 드롭 가능)')
+        self.zip_label = QLabel('ZIP 미선택 (드래그 앤 드롭 가능)')
 
         # 입력받을 데이터 위한 입력창
         self.start_row_input = QLineEdit('9')
@@ -88,6 +90,23 @@ class MainWindow(QWidget):
         layout.addWidget(self.log_box)
 
         self.setLayout(layout)
+
+    def dragEnterEvent(self, event):
+        if event.mimeData().hasUrls():
+            event.accept()
+        else:
+            event.ignore()
+
+    def dropEvent(self, event):
+        files = [u.toLocalFile() for u in event.mimeData().urls()]
+        for file_path in files:
+            ext = os.path.splitext(file_path)[1].lower()
+            if ext in ['.xls', '.xlsx']:
+                self.excel_path = file_path
+                self.excel_label.setText(file_path)
+            elif ext == '.zip':
+                self.zip_path = file_path
+                self.zip_label.setText(file_path)
 
     def select_excel(self):
         path, _ = QFileDialog.getOpenFileName(self)
