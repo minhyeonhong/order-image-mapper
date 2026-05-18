@@ -2,6 +2,7 @@ import sys
 import zipfile
 import tempfile
 import os
+import json
 
 from PySide6.QtWidgets import (
     QApplication,
@@ -10,8 +11,14 @@ from PySide6.QtWidgets import (
     QFileDialog,
     QLabel,
     QVBoxLayout,
+    QHBoxLayout,
+    QGridLayout,
+    QGroupBox,
     QTextEdit,
     QLineEdit,
+    QComboBox,
+    QInputDialog,
+    QMessageBox,
 )
 
 from excel_handler import ExcelHandler
@@ -26,70 +33,200 @@ class MainWindow(QWidget):
 
         self.setAcceptDrops(True)
 
+        self.recipe_file = 'recipes.json'
+        self.recipes = self.load_recipes()
+
         self.excel_path = ''
         self.zip_path = ''
 
         self.setWindowTitle('수주서 이미지 자동 삽입기')
+        self.resize(700, 650)
+        self.setStyleSheet("""
+            QWidget { font-family: "Malgun Gothic", "Apple SD Gothic Neo", sans-serif; font-size: 13px; color: #222; }
+            QGroupBox { font-weight: bold; border: 1px solid #ccc; border-radius: 6px; margin-top: 15px; padding-top: 15px; }
+            QGroupBox::title { subcontrol-origin: margin; left: 10px; padding: 0 5px; color: #0056b3; }
+            QPushButton { background-color: #f8f9fa; border: 1px solid #ccc; border-radius: 4px; padding: 6px 12px; }
+            QPushButton:hover { background-color: #e2e6ea; }
+            QPushButton#runBtn { background-color: #007bff; color: white; font-weight: bold; font-size: 14px; padding: 10px; margin-top: 10px; }
+            QPushButton#runBtn:hover { background-color: #0069d9; }
+            QLineEdit, QComboBox { border: 1px solid #ccc; border-radius: 4px; padding: 5px; background: white; }
+            QLineEdit:focus, QComboBox:focus { border: 1px solid #80bdff; }
+            QTextEdit { border: 1px solid #ccc; border-radius: 4px; background: #fff; }
+            QLabel#fileLabel { border: 2px dashed #bbb; border-radius: 4px; padding: 10px; background: #fdfdfd; color: #555; font-weight: bold; }
+        """)
 
-        layout = QVBoxLayout()
+        main_layout = QVBoxLayout()
+        main_layout.setSpacing(15)
+        main_layout.setContentsMargins(20, 20, 20, 20)
 
-        self.excel_label = QLabel('Excel 미선택 (드래그 앤 드롭 가능)')
-        self.zip_label = QLabel('ZIP 미선택 (드래그 앤 드롭 가능)')
+        # --- 1. 파일 선택 그룹 ---
+        file_group = QGroupBox("📂 파일 선택 (드래그 앤 드롭)")
+        file_layout = QGridLayout()
+        file_layout.setSpacing(10)
 
-        # 입력받을 데이터 위한 입력창
+        self.excel_label = QLabel('Excel 미선택')
+        self.excel_label.setObjectName("fileLabel")
+        self.zip_label = QLabel('ZIP 미선택')
+        self.zip_label.setObjectName("fileLabel")
+
+        excel_btn = QPushButton('Excel 찾기')
+        excel_btn.clicked.connect(self.select_excel)
+        zip_btn = QPushButton('ZIP 찾기')
+        zip_btn.clicked.connect(self.select_zip)
+
+        file_layout.addWidget(QLabel('<b>Excel 파일</b>'), 0, 0)
+        file_layout.addWidget(self.excel_label, 0, 1)
+        file_layout.addWidget(excel_btn, 0, 2)
+
+        file_layout.addWidget(QLabel('<b>ZIP 파일</b>'), 1, 0)
+        file_layout.addWidget(self.zip_label, 1, 1)
+        file_layout.addWidget(zip_btn, 1, 2)
+        
+        file_layout.setColumnStretch(1, 1)
+        file_group.setLayout(file_layout)
+        main_layout.addWidget(file_group)
+
+        # --- 2. 설정 그룹 ---
+        settings_group = QGroupBox("⚙️ 상세 설정")
+        settings_layout = QVBoxLayout()
+        settings_layout.setSpacing(15)
+
+        # 레시피 UI
+        recipe_layout = QHBoxLayout()
+        self.recipe_combo = QComboBox()
+        self.recipe_combo.addItem("기본 설정")
+        self.recipe_combo.addItems(list(self.recipes.keys()))
+        self.recipe_combo.currentTextChanged.connect(self.load_recipe)
+        self.recipe_combo.setMinimumWidth(150)
+
+        save_recipe_btn = QPushButton("저장")
+        save_recipe_btn.clicked.connect(self.save_recipe)
+        delete_recipe_btn = QPushButton("삭제")
+        delete_recipe_btn.clicked.connect(self.delete_recipe)
+
+        recipe_layout.addWidget(QLabel("<b>저장된 레시피:</b>"))
+        recipe_layout.addWidget(self.recipe_combo)
+        recipe_layout.addWidget(save_recipe_btn)
+        recipe_layout.addWidget(delete_recipe_btn)
+        recipe_layout.addStretch()
+        
+        settings_layout.addLayout(recipe_layout)
+
+        # 입력 필드 UI (Grid)
+        form_layout = QGridLayout()
+        form_layout.setSpacing(10)
+
         self.start_row_input = QLineEdit('9')
         self.jan_col_input = QLineEdit('F')
         self.name_col_input = QLineEdit('H')
         self.image_col_input = QLineEdit('D')
-
         self.image_width_input = QLineEdit('150')
         self.image_height_input = QLineEdit('150')
 
+        form_layout.addWidget(QLabel('데이터 시작 행:'), 0, 0)
+        form_layout.addWidget(self.start_row_input, 0, 1)
+        
+        form_layout.addWidget(QLabel('JAN 열:'), 0, 2)
+        form_layout.addWidget(self.jan_col_input, 0, 3)
+
+        form_layout.addWidget(QLabel('상품명 열:'), 1, 0)
+        form_layout.addWidget(self.name_col_input, 1, 1)
+
+        form_layout.addWidget(QLabel('이미지 삽입 열:'), 1, 2)
+        form_layout.addWidget(self.image_col_input, 1, 3)
+
+        form_layout.addWidget(QLabel('이미지 너비:'), 2, 0)
+        form_layout.addWidget(self.image_width_input, 2, 1)
+
+        form_layout.addWidget(QLabel('이미지 높이:'), 2, 2)
+        form_layout.addWidget(self.image_height_input, 2, 3)
+
+        settings_layout.addLayout(form_layout)
+        settings_group.setLayout(settings_layout)
+        main_layout.addWidget(settings_group)
+
+        # --- 3. 실행 및 로그 ---
+        run_btn = QPushButton('▶ 이미지 자동 삽입 실행')
+        run_btn.setObjectName("runBtn")
+        run_btn.clicked.connect(self.run_process)
+        main_layout.addWidget(run_btn)
+
         self.log_box = QTextEdit()
         self.log_box.setReadOnly(True)
-        self.log_box.setMinimumHeight(300)
+        self.log_box.setMinimumHeight(200)
+        main_layout.addWidget(QLabel("<b>📝 진행 로그</b>"))
+        main_layout.addWidget(self.log_box)
 
-        excel_btn = QPushButton('Excel 선택')
-        excel_btn.clicked.connect(self.select_excel)
+        self.setLayout(main_layout)
 
-        zip_btn = QPushButton('ZIP 선택')
-        zip_btn.clicked.connect(self.select_zip)
+    def load_recipes(self):
+        if os.path.exists(self.recipe_file):
+            try:
+                with open(self.recipe_file, 'r', encoding='utf-8') as f:
+                    return json.load(f)
+            except Exception:
+                return {}
+        return {}
 
-        run_btn = QPushButton('실행')
-        run_btn.clicked.connect(self.run_process)
+    def save_recipes_to_file(self):
+        with open(self.recipe_file, 'w', encoding='utf-8') as f:
+            json.dump(self.recipes, f, ensure_ascii=False, indent=4)
 
-        layout.addWidget(QLabel('Excel 파일'))
-        layout.addWidget(self.excel_label)
-        layout.addWidget(excel_btn)
+    def save_recipe(self):
+        name, ok = QInputDialog.getText(self, "레시피 저장", "레시피 이름을 입력하세요:")
+        if ok and name:
+            name = name.strip()
+            if not name:
+                return
+            if name == "기본 설정":
+                QMessageBox.warning(self, "경고", "'기본 설정'이라는 이름은 사용할 수 없습니다.")
+                return
 
-        layout.addWidget(QLabel('ZIP 파일'))
-        layout.addWidget(self.zip_label)
-        layout.addWidget(zip_btn)
+            self.recipes[name] = {
+                'start_row': self.start_row_input.text(),
+                'jan_col': self.jan_col_input.text(),
+                'name_col': self.name_col_input.text(),
+                'image_col': self.image_col_input.text(),
+                'image_width': self.image_width_input.text(),
+                'image_height': self.image_height_input.text()
+            }
+            self.save_recipes_to_file()
+            
+            if self.recipe_combo.findText(name) == -1:
+                self.recipe_combo.addItem(name)
+            self.recipe_combo.setCurrentText(name)
+            self.log(f'레시피 "{name}"이(가) 저장되었습니다.')
 
-        layout.addWidget(QLabel('시작 행'))
-        layout.addWidget(self.start_row_input)
+    def delete_recipe(self):
+        name = self.recipe_combo.currentText()
+        if name == "기본 설정":
+            QMessageBox.warning(self, "경고", "기본 설정은 삭제할 수 없습니다.")
+            return
 
-        layout.addWidget(QLabel('JAN 열'))
-        layout.addWidget(self.jan_col_input)
+        reply = QMessageBox.question(self, "확인", f'레시피 "{name}"을(를) 삭제하시겠습니까?', QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No)
+        if reply == QMessageBox.StandardButton.Yes:
+            if name in self.recipes:
+                del self.recipes[name]
+                self.save_recipes_to_file()
+                self.recipe_combo.removeItem(self.recipe_combo.currentIndex())
+                self.log(f'레시피 "{name}"이(가) 삭제되었습니다.')
 
-        layout.addWidget(QLabel('상품명 열'))
-        layout.addWidget(self.name_col_input)
-
-        layout.addWidget(QLabel('이미지 열'))
-        layout.addWidget(self.image_col_input)
-
-        layout.addWidget(QLabel('이미지 너비'))
-        layout.addWidget(self.image_width_input)
-
-        layout.addWidget(QLabel('이미지 높이'))
-        layout.addWidget(self.image_height_input)
-
-        layout.addWidget(run_btn)
-
-        layout.addWidget(QLabel('로그'))
-        layout.addWidget(self.log_box)
-
-        self.setLayout(layout)
+    def load_recipe(self, name):
+        if name == "기본 설정":
+            self.start_row_input.setText('9')
+            self.jan_col_input.setText('F')
+            self.name_col_input.setText('H')
+            self.image_col_input.setText('D')
+            self.image_width_input.setText('150')
+            self.image_height_input.setText('150')
+        elif name in self.recipes:
+            recipe = self.recipes[name]
+            self.start_row_input.setText(recipe.get('start_row', '9'))
+            self.jan_col_input.setText(recipe.get('jan_col', 'F'))
+            self.name_col_input.setText(recipe.get('name_col', 'H'))
+            self.image_col_input.setText(recipe.get('image_col', 'D'))
+            self.image_width_input.setText(recipe.get('image_width', '150'))
+            self.image_height_input.setText(recipe.get('image_height', '150'))
 
     def dragEnterEvent(self, event):
         if event.mimeData().hasUrls():
